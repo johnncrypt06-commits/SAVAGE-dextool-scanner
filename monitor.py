@@ -85,6 +85,7 @@ class ProfitMonitor:
             "roi_percent": roi,
             "sell_tx_hash": sell_result["tx_hash"],
             "duration_seconds": duration_seconds,
+            "close_reason": reason.lower().replace("-", "_").replace(" ", "_"),
         }
 
         await db.close_position(token_address, chain, exit_data, user_id=user_id)
@@ -138,6 +139,7 @@ class ProfitMonitor:
             "roi_percent": roi,
             "sell_tx_hash": sell_result["tx_hash"],
             "duration_seconds": duration_seconds,
+            "close_reason": tier_label.lower().split()[0].replace("-", "_"),
         }
 
         await db.record_partial_sell(token_address, chain, user_id, sell_fraction, exit_data)
@@ -177,6 +179,18 @@ class ProfitMonitor:
                 )
         except Exception as exc:
             logger.error("Fee collection error for user %d: %s", user_id, exc)
+
+    async def _check_daily_kill_switch(self, user_id: int, wallet_value_native: float, limit_percent: float):
+        if wallet_value_native <= 0 or limit_percent <= 0:
+            return
+        total_loss = await db.get_daily_realized_loss(user_id)
+        loss_percent = (total_loss / wallet_value_native) * 100
+        if loss_percent >= limit_percent:
+            await db.activate_kill_switch(user_id)
+            await self.notifier.send_to_user(
+                user_id,
+                f"🛑 Daily loss kill switch triggered: {loss_percent:.2f}% loss >= {limit_percent:.2f}% limit. Auto-trade paused.",
+            )
 
     async def _try_compound(self, user_id: int, profit_native: float):
         try:
@@ -224,6 +238,9 @@ class ProfitMonitor:
             user_trader = _trader_cache[user_id]
             notify_chat_id = user_id if user_id != 0 else None
             user_cfg = await get_effective_config(user_id)
+            if await db.get_kill_switch_status(user_id):
+                logger.info("Kill switch active for user %d, skipping %s", user_id, symbol)
+                continue
 
             try:
                 if ANTIRUG_ENABLED:
@@ -286,6 +303,31 @@ class ProfitMonitor:
                 roi = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
                 logger.debug("%s ROI: %.2f%% (entry=%.10f, current=%.10f)", symbol, roi, entry_price, current_price)
 
+                if roi >= user_cfg.get("tp1_percent", 50) and not bool(pos.get("tp1_hit", False)):
+                    sell_fraction = max(0, min(user_cfg.get("tp1_sell_percent", 50), 100)) / 100.0
+                    sell_result = await self._execute_partial_sell(pos, sell_fraction, roi, "tp1", user_trader=user_trader, user_id=user_id)
+                    if sell_result:
+                        await db.mark_tp1_hit(token_address, chain, user_id=user_id)
+                        profit_native = sell_result["native_received"] - (pos["buy_amount_native"] * sell_fraction)
+                        await self.notifier.notify_tier_sell(symbol=symbol, tier_label="TP1", sell_percent=sell_fraction * 100, roi=round(roi, 2), native_received=sell_result["native_received"], tx_hash=sell_result["tx_hash"], chain=chain, chat_id=notify_chat_id)
+                        await self._admin_summary(user_id, "TP1 sell", symbol, round(roi, 2), profit_native)
+                        if profit_native > 0:
+                            await self._try_collect_fee(user_id, symbol, profit_native, notify_chat_id)
+                            await self._try_compound(user_id, profit_native)
+                        pos["tp1_hit"] = True
+
+                if roi >= user_cfg.get("tp2_percent", 100) and bool(pos.get("tp1_hit", False)):
+                    sell_result = await self._execute_sell_and_close(pos, roi, "tp2", user_trader=user_trader, user_id=user_id)
+                    if sell_result:
+                        profit_native = sell_result["native_received"] - pos["buy_amount_native"]
+                        duration_str = _format_duration(sell_result["duration_seconds"])
+                        await self.notifier.notify_take_profit(symbol=symbol, entry_price=entry_price, exit_price=sell_result["exit_price"], roi=round(roi, 2), profit_usd=profit_native, duration=duration_str, tx_hash=sell_result["tx_hash"], chain=chain, chat_id=notify_chat_id)
+                        await self._admin_summary(user_id, "TP2 sell", symbol, round(roi, 2), profit_native)
+                        if profit_native > 0:
+                            await self._try_collect_fee(user_id, symbol, profit_native, notify_chat_id)
+                            await self._try_compound(user_id, profit_native)
+                        continue
+
                 # --- Tiered Sells ---
                 if SELL_TIERS:
                     tiers_completed_raw = pos.get("tiers_completed", "[]")
@@ -333,6 +375,23 @@ class ProfitMonitor:
                         await db.update_tiers_completed(token_address, chain, tiers_completed, user_id=user_id)
 
                 sold = False
+
+                peak_price = pos.get("peak_price", 0) or entry_price
+                if current_price > peak_price:
+                    peak_price = current_price
+                    await db.update_peak_price(token_address, chain, peak_price, bool(pos.get("trailing_activated", 0)), user_id=user_id)
+                trailing_sl_pct = user_cfg.get("trailing_sl_percent", user_cfg.get("trailing_drop", TRAILING_DROP))
+                trailing_trigger = peak_price * (1 - trailing_sl_pct / 100)
+                if peak_price > entry_price and current_price <= trailing_trigger:
+                    sell_result = await self._execute_sell_and_close(pos, roi, "trailing_sl", user_trader=user_trader, user_id=user_id)
+                    if sell_result:
+                        sold = True
+                        profit_native = sell_result["native_received"] - pos["buy_amount_native"]
+                        duration_str = _format_duration(sell_result["duration_seconds"])
+                        await self.notifier.notify_take_profit(symbol=symbol, entry_price=entry_price, exit_price=sell_result["exit_price"], roi=round(roi, 2), profit_usd=profit_native, duration=duration_str, tx_hash=sell_result["tx_hash"], chain=chain, chat_id=notify_chat_id)
+                        if profit_native < 0:
+                            await self._check_daily_kill_switch(user_id, max(pos.get("buy_amount_native", 0), 0), user_cfg.get("daily_loss_limit_percent", 20))
+                        continue
 
                 if TRAILING_ENABLED:
                     trailing_activated = bool(pos.get("trailing_activated", 0))
@@ -435,6 +494,8 @@ class ProfitMonitor:
                         if loss_native > 0:
                             await self._try_collect_fee(user_id, symbol, loss_native, notify_chat_id)
                             await self._try_compound(user_id, loss_native)
+                        elif loss_native < 0:
+                            await self._check_daily_kill_switch(user_id, max(pos.get("buy_amount_native", 0), 0), user_cfg.get("daily_loss_limit_percent", 20))
 
             except Exception as exc:
                 logger.error("Error checking position %s: %s", symbol, exc)

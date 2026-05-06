@@ -1,256 +1,228 @@
-# DexTool Scanner — Multi-User Solana Trading Bot
+# SAVAGE Dextool Scanner
 
-Automated Telegram trading bot that scans DexTools for newly launched low-cap tokens on **Solana** (with optional ETH/BSC support). Each approved user gets a personal auto-generated Solana wallet — the bot trades independently for each user using their own funds.
-
-## Features
-
-- **Multi-user wallets** — Each user gets a BIP-39 seed-phrase wallet on `/adduser`. Users fund their own wallets and trade independently.
-- **Multi-chain support** — Solana (primary), Ethereum, BSC
-- **DexTools API v2 integration** — scans hot pools and new token listings
-- **Jupiter V6 swaps** — best-route execution on Solana via Jupiter aggregator
-- **Uniswap V2 / PancakeSwap V2** — DEX routing for EVM chains
-- **Honeypot protection** — dual-check via DexTools audit API + GoPlus Security blocks honeypot tokens before buying
-- **Configurable filters** — market cap range, minimum liquidity, honeypot detection
-- **Auto take-profit & stop-loss** — monitors positions and sells at target ROI
-- **Trailing take-profit** — locks in gains by tracking peak price and selling on configurable drop
-- **Telegram interface** — real-time notifications and bot commands
-- **SQLite persistence** — tracks detected tokens, open positions, and completed trades per user
-- **Encrypted wallet storage** — private keys and seed phrases encrypted at rest with Fernet
-- **Wallet export** — users can export seed phrase / private key to import into Phantom or Solflare
-- **Broadcast alerts** — "NEW LOWCAP DETECTED" alerts sent to all chats (DMs + groups)
-- **Privacy controls** — admin sees all users; regular users see only their own data
-- **Rotating log files** — `trading.log` with automatic rotation (5 MB × 3 backups)
-- **Graceful shutdown** — handles SIGINT/SIGTERM cleanly
-- **Whale tracking** — monitors configurable whale wallets for large buys on watched tokens (Solana only)
-- **Anti-rug protection** — monitors liquidity of open positions; auto-sells immediately if liquidity drops below a floor or by a configurable percentage from entry
-- **Operator fee system** — configurable percentage fee on profitable trades, automatically transferred to admin wallet with full audit trail
-
-## Prerequisites
-
-- Python 3.11+
-- A funded Solana wallet for the admin (base58 private key)
-- Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- Solana RPC endpoint (public, or Helius/QuickNode for better reliability)
-- *(Optional)* DexTools API key ([developer.dextools.io](https://developer.dextools.io)) — paid plans only; bot works without it using DexScreener's free API
-
-> **Required:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PRIVATE_KEY`, `ENCRYPTION_KEY`
-> **Optional:** `DEXTOOLS_API_KEY` (paid — bot works without it using DexScreener's free API)
-
-## Installation
-
-```bash
-git clone https://github.com/Savage27zz/dextool-scanner.git
-cd dextool-scanner
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env with your keys and configuration
-```
-
-### Generate an encryption key
-
-The bot encrypts all user wallet private keys at rest. Generate an encryption key once:
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-Paste the output into `ENCRYPTION_KEY=` in your `.env` file. **Back this key up** — without it, stored wallets cannot be decrypted.
-
-## Configuration
-
-Edit `.env` with your values:
-
-| Variable | Description | Default |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | *required* |
-| `TELEGRAM_CHAT_ID` | Your Telegram user ID (admin) | *required* |
-| `PRIVATE_KEY` | Base58 Solana private key (admin wallet) | *required* |
-| `ENCRYPTION_KEY` | Fernet key for encrypting user wallets | *required* |
-| `RPC_URL_SOL` | Solana RPC endpoint | `https://api.mainnet-beta.solana.com` |
-| `RPC_URL_ETH` | Ethereum RPC (optional) | — |
-| `RPC_URL_BSC` | BSC RPC (optional) | — |
-| `DEXTOOLS_API_KEY` | DexTools API key (optional — enables richer data) | — |
-| `DEXTOOLS_PLAN` | DexTools plan tier (`trial`, `standard`, etc.) | `trial` |
-| `CHAIN` | Active chain: `SOL`, `ETH`, or `BSC` | `SOL` |
-| `BUY_PERCENT` | % of wallet balance to use per trade | `50` |
-| `TAKE_PROFIT` | ROI % target to trigger sell | `20` |
-| `STOP_LOSS` | ROI % to trigger stop-loss sell (negative, e.g. -30) | `-30` |
-| `TRAILING_ENABLED` | Enable trailing take-profit mode | `true` |
-| `TRAILING_DROP` | % drop from peak price to trigger trailing sell | `10` |
-| `SLIPPAGE` | Slippage tolerance % | `15` |
-| `MIN_LIQUIDITY` | Minimum pool liquidity in USD | `5000` |
-| `MIN_MCAP` | Minimum market cap in USD | `10000` |
-| `MAX_MCAP` | Maximum market cap in USD | `500000` |
-| `SCAN_INTERVAL` | Seconds between DexTools scans | `60` |
-| `MONITOR_INTERVAL` | Seconds between position checks | `30` |
-| `MIN_SCORE` | Minimum safety score (0-100) for auto-buy | `40` |
-| `WHALE_TRACKING_ENABLED` | Enable whale/smart-money wallet tracking (Solana only) | `true` |
-| `WHALE_CHECK_INTERVAL` | Seconds between whale wallet checks | `45` |
-| `WHALE_MIN_SOL` | Minimum SOL spent by whale to trigger alert | `1.0` |
-| `ANTIRUG_ENABLED` | Enable anti-rug liquidity protection | `true` |
-| `ANTIRUG_MIN_LIQ` | Emergency sell if liquidity drops below this USD amount | `1000` |
-| `ANTIRUG_LIQ_DROP_PCT` | Emergency sell if liquidity drops by this % from entry | `70` |
-| `OPERATOR_FEE_ENABLED` | Enable operator fee on profitable trades | `true` |
-| `OPERATOR_FEE_PCT` | Percentage of profit taken as operator fee | `5` |
-
-## Docker (recommended)
-
-The easiest way to run the bot — no Python install needed.
-
-1. Install [Docker Desktop](https://docker.com/products/docker-desktop/)
-2. Clone the repo and configure:
-   ```bash
-   git clone https://github.com/Savage27zz/dextool-scanner.git
-   cd dextool-scanner
-   cp .env.example .env
-   # Edit .env with your keys (including ENCRYPTION_KEY)
-   ```
-3. Start the bot:
-   ```bash
-   docker compose up -d
-   ```
-4. View logs:
-   ```bash
-   docker compose logs -f
-   ```
-5. Stop the bot:
-   ```bash
-   docker compose down
-   ```
-
-Data (database + logs) is persisted in the `data/` directory.
-
-## Usage
-
-```bash
-python bot.py
-```
-
-The bot will connect to Telegram and send a startup message. Use commands to control it.
-
-## Multi-User Setup
-
-1. **Admin starts the bot** — the admin's existing wallet (from `PRIVATE_KEY`) is automatically registered.
-2. **Admin adds users** — `/adduser <user_id>` generates a BIP-39 wallet for the new user and grants bot access.
-3. **User funds wallet** — the user sends SOL to the wallet address shown in `/wallet`.
-4. **User can export** — `/export` (in DM) shows seed phrase and private key for import into Phantom/Solflare.
-5. **Auto-trading** — when the scanner detects a qualifying token, it buys for ALL users who have auto-trade enabled and sufficient balance.
-6. **Monitor & sell** — the profit monitor checks all users' positions and sells using each user's own wallet.
-7. **Withdraw** — users can withdraw SOL with `/withdraw <amount> <address>`.
-
-### Privacy Model
-
-- **Admin** sees all users' wallets, balances, positions, and trade history.
-- **Regular users** see only their own wallet, balance, positions, and history.
-- **Admin's wallet** is hidden from other users.
-- **Buy/sell notifications** are sent only to the individual user (plus an admin summary).
-- **Token detection alerts** are broadcast to all chats (DMs + groups).
-
-## Bot Commands
-
-**Anyone** (including unapproved users):
-| Command | Description |
-|---|---|
-| `/help` | Show bot info and available commands |
-
-**Authorized users** (admin + approved users):
-| Command | Description |
-|---|---|
-| `/wallet` | Your wallet address, balance, and auto-trade status |
-| `/status` | Your open positions with live ROI |
-| `/balance` | Your wallet SOL balance |
-| `/history` | Your last 10 completed trades |
-| `/portfolio` | Your full portfolio overview with PnL |
-| `/config` | Display current configuration |
-| `/buy <address> [amount]` | Manually buy a token with your wallet |
-| `/sell <address> [percent]` | Manually sell a token from your wallet |
-| `/autotrade on\|off` | Toggle auto-trading for your wallet |
-| `/withdraw <amount> <address>` | Withdraw SOL to an external address |
-| `/export` | Export wallet credentials (DM only) |
-
-**Admin only** (`TELEGRAM_CHAT_ID` owner):
-| Command | Description |
-|---|---|
-| `/start` | Start scanning and auto-trading for all users |
-| `/stop` | Stop scanning (bot stays responsive) |
-| `/adduser <id>` | Grant access and generate wallet for a user |
-| `/removeuser <id>` | Revoke access and delete user's wallet |
-| `/users` | List all users with wallet info and balances |
-| `/chats` | List all active bot chats |
-| `/status all` | Show all users' open positions |
-| `/portfolio all` | Show all users' portfolio overview |
-| `/addwhale <address> [label]` | Track a whale/smart-money wallet |
-| `/removewhale <address>` | Stop tracking a whale wallet |
-| `/whales` | List tracked whale wallets & recent events |
-| `/fees` | Show operator fee revenue stats |
+SAVAGE is a Solana-first trading bot that scans low-cap tokens, scores risk, executes buys/sells, monitors open positions, tracks whales, supports sniper/DCA/limit orders, and sends Telegram alerts. This version upgrades persistence from local SQLite to PostgreSQL and adds a production FastAPI dashboard backend backed by Redis for price caching and WebSocket event fan-out.
 
 ## Architecture
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Telegram    │◄───►│    bot.py     │────►│  notifier.py │
-│   (Users)     │     │  (commands)   │     │  (messages)  │
-└──────────────┘     └──────┬───────┘     └──────────────┘
-                            │
-                   ┌────────┼────────┐
-                   ▼        │        ▼
-            ┌────────────┐  │  ┌─────────────┐
-            │ scanner.py  │  │  │ monitor.py   │
-            │ (DexTools   │  │  │ (per-user    │
-            │  API scan)  │  │  │  profit      │
-            └──────┬─────┘  │  │  tracking)   │
-                   │        │  └──────┬──────┘
-                   ▼        │         │
-            ┌──────────┐    │  ┌──────┴──────────────────┐
-            │  whale_   │    │  │      trader.py           │
-            │ tracker   │◄───┘  │  ┌──────────┐           │
-            │ (wallet   │       │  │ Solana    │ per-user  │
-            │  monitor) │       │  │ Trader    │ keypairs  │
-            └──────────┘       │  │ (Jupiter) │           │
-                               │  └──────────┘           │
-                               └──────────┬──────────────┘
-                                          │
-                               ┌──────────┴──────────┐
-                               │       db.py          │
-                               │  (SQLite + wallets   │
-                               │   + fee_ledger)      │
-                               └──────────┬──────────┘
-                                          │
-                               ┌──────────┴──────────┐
-                               │   crypto_utils.py    │
-                               │  (Fernet encryption) │
-                               └─────────────────────┘
-
-config.py ─── loaded by all modules (env vars + logger)
+```text
+Telegram Bot ─────┐
+                  │ reads/writes
+                  ▼
+              PostgreSQL ◄──── FastAPI Backend ◄──── React Frontend
+                  ▲                 ▲   │
+                  │                 │   └── WebSocket /ws
+                  │                 │
+             Alembic migrations     │
+                                    ▼
+                         Redis cache + pub/sub
 ```
 
-**Scan → Filter → Buy (per user) → Monitor → Sell** loop:
+- `bot.py`, `scanner.py`, `monitor.py`, `trader.py`, `sniper.py`, `whale_tracker.py`, and related modules remain at the repository root.
+- Root `db.py` uses `asyncpg` and a shared PostgreSQL connection pool.
+- `backend/` is a separate FastAPI process for dashboard auth, overview, positions, trade history, performance, settings, wallet, and WebSocket APIs.
+- Redis stores 30-second price cache entries and forwards bot trade events to connected dashboard clients.
+- Alembic owns schema creation and migrations.
 
-1. `scanner.py` queries DexTools API every 60s for hot pools and new tokens
-2. Filters by market cap, liquidity, age, and honeypot status
-3. "NEW LOWCAP DETECTED" alert broadcast to all chats
-4. For each user with auto-trade enabled and sufficient balance, `trader.py` executes a buy via Jupiter
-5. `monitor.py` checks all users' positions every 30s using Jupiter Price API
-6. Anti-rug check runs first each cycle — if liquidity drops, triggers an emergency sell per user
-7. When ROI hits the take-profit target, executes a sell per user and logs the trade
+## Folder structure
 
-## File Overview
+```text
+SAVAGE-dextool-scanner/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── models.py
+│   │   ├── schemas.py
+│   │   ├── auth.py
+│   │   ├── deps.py
+│   │   ├── redis_client.py
+│   │   ├── ws_manager.py
+│   │   └── routes/
+│   ├── requirements.txt
+│   └── Dockerfile
+├── alembic/
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/001_initial_schema.py
+├── frontend/Dockerfile
+├── alembic.ini
+├── docker-compose.yml
+├── Dockerfile
+├── db.py
+├── monitor.py
+└── existing root bot modules
+```
 
-| File | Purpose |
-|---|---|
-| `config.py` | Loads `.env`, validates config, sets up rotating logger |
-| `crypto_utils.py` | Fernet encryption/decryption for wallet private keys and seed phrases |
-| `db.py` | SQLite async layer — detected tokens, positions, trades, user wallets, bot chats |
-| `scanner.py` | DexTools API v2 — scan, enrich, filter new tokens |
-| `trader.py` | `SolanaTrader` (Jupiter V6) with per-user keypair support + `EVMTrader` (web3.py) |
-| `monitor.py` | Background per-user profit-monitoring loop |
-| `notifier.py` | Telegram message formatting, per-user DMs, and broadcast alerts |
-| `bot.py` | Entry point — Telegram bot commands, scanner/monitor orchestration, wallet generation |
-| `fee_collector.py` | Operator fee calculation and SOL transfer logic |
-| `whale_tracker.py` | Background whale wallet tracker — monitors large DEX buys |
+## Environment variables
 
-## Disclaimer
+| Variable | Required | Description | Example |
+|---|---:|---|---|
+| `TELEGRAM_BOT_TOKEN` | yes | Telegram bot token used by bot and login verification | `123:abc` |
+| `TELEGRAM_BOT_NAME` | dashboard | Bot username for Telegram Login Widget | `savage_bot` |
+| `TELEGRAM_CHAT_ID` | yes | Admin Telegram user/chat ID | `123456789` |
+| `ADMIN_TELEGRAM_IDS` | dashboard | Comma-separated admin Telegram user IDs | `123456789,987654321` |
+| `PRIVATE_KEY` | bot | Admin trading private key | `base58...` |
+| `ENCRYPTION_KEY` | yes | Fernet key for stored user wallets | `python -c ...` |
+| `DATABASE_URL` | yes | PostgreSQL connection URL | `postgresql://savage:savage@localhost:5432/savage_trading` |
+| `POSTGRES_PASSWORD` | Docker | PostgreSQL container password | `savage` |
+| `REDIS_URL` | yes | Redis URL | `redis://localhost:6379/0` |
+| `JWT_SECRET` | dashboard | JWT signing secret | long random string |
+| `JWT_EXPIRE_HOURS` | dashboard | Dashboard session lifetime | `72` |
+| `FRONTEND_URL` | backend | CORS origin for local frontend | `http://localhost:5173` |
+| `FRONTEND_PORT` | Docker | Published frontend port | `3000` |
+| `BACKEND_PORT` | Docker | Published backend port | `8000` |
+| `FRONTEND_API_URL` | frontend | Browser API base URL | `http://localhost:8000` |
+| `FRONTEND_WS_URL` | frontend | Browser WebSocket URL | `ws://localhost:8000` |
+| `RPC_URL_SOL` | bot/backend | Solana RPC endpoint | `https://api.mainnet-beta.solana.com` |
+| `RPC_URL_ETH` | optional | Ethereum RPC endpoint | Infura/Alchemy URL |
+| `RPC_URL_BSC` | optional | BSC RPC endpoint | public/private RPC |
+| `DEXTOOLS_API_KEY` | optional | DexTools API key | empty allowed |
+| `DEXTOOLS_PLAN` | optional | DexTools plan path | `trial` |
+| `BIRDEYE_API_KEY` | optional | Birdeye market data key | empty allowed |
+| `HELIUS_API_KEY` | optional | Helius key for Pump.fun/RPC features | empty allowed |
+| `CHAIN` | bot | Active trading chain | `SOL` |
+| `BUY_PERCENT` | bot | Wallet percent per buy | `50` |
+| `TAKE_PROFIT` | bot | Legacy take-profit percent | `20` |
+| `STOP_LOSS` | bot | Negative ROI stop-loss threshold | `-30` |
+| `TRAILING_ENABLED` | bot | Enable trailing logic | `true` |
+| `TRAILING_DROP` | bot | Legacy trailing drop percent | `10` |
+| `SLIPPAGE` | bot | Swap slippage percent | `15` |
+| `SELL_TIERS` | bot | Legacy tiered sell config | `50:50,100:25` |
+| `TP1_PERCENT` | bot/dashboard | TP1 ROI threshold | `50` |
+| `TP1_SELL_PERCENT` | bot/dashboard | Position percent sold at TP1 | `50` |
+| `TP2_PERCENT` | bot/dashboard | TP2 ROI threshold for remaining position | `100` |
+| `TRAILING_SL_PERCENT` | bot/dashboard | Trailing stop from peak | `15` |
+| `DAILY_LOSS_LIMIT_PCT` | bot/dashboard | Daily loss kill-switch percent | `20` |
+| `MIN_LIQUIDITY` | bot | Minimum liquidity filter | `5000` |
+| `MAX_MCAP` | bot | Maximum market cap filter | `500000` |
+| `MIN_MCAP` | bot | Minimum market cap filter | `10000` |
+| `MIN_SCORE` | bot | Minimum token safety score | `40` |
+| `MAX_OPEN_POSITIONS` | bot | Max open positions per user | `5` |
+| `MAX_DAILY_LOSS` | bot | Legacy native-token daily loss cap | `2.0` |
+| `MAX_BUY_AMOUNT` | bot | Max native buy amount | `1.0` |
+| `COMPOUND_ENABLED` | bot | Enable profit compounding | `false` |
+| `COMPOUND_PERCENT` | bot | Profit percent sent to compound fund | `50` |
+| `SCAN_INTERVAL` | bot | Scanner interval seconds | `60` |
+| `MONITOR_INTERVAL` | bot | Position monitor interval seconds | `30` |
+| `WHALE_TRACKING_ENABLED` | bot | Enable whale monitoring | `true` |
+| `WHALE_CHECK_INTERVAL` | bot | Whale polling interval | `45` |
+| `WHALE_MIN_SOL` | bot | Minimum SOL spend alert | `1.0` |
+| `WHALE_COPY_ENABLED` | bot | Enable whale copy trading | `false` |
+| `WHALE_COPY_AMOUNT` | bot | Copy buy size in SOL | `0.1` |
+| `WHALE_COPY_MAX_PER_TOKEN` | bot | Copy cap per token | `1` |
+| `ANTIRUG_ENABLED` | bot | Enable liquidity emergency exits | `true` |
+| `ANTIRUG_MIN_LIQ` | bot | Minimum liquidity floor | `1000` |
+| `ANTIRUG_LIQ_DROP_PCT` | bot | Entry liquidity drop trigger | `70` |
+| `OPERATOR_FEE_ENABLED` | bot | Enable profit fee collection | `true` |
+| `OPERATOR_FEE_PCT` | bot | Fee percent of winning trades | `5` |
+| `API_ENABLED` | legacy | Legacy root API toggle | `false` |
+| `API_PORT` | legacy | Legacy API port | `8080` |
+| `API_KEY` | legacy | Legacy API key | random string |
+| `ALERT_BROADCAST` | bot | Broadcast detections to all chats | `false` |
+| `SNIPER_ENABLED` | bot | Enable sniper loop | `false` |
+| `SNIPER_CHECK_INTERVAL` | bot | Sniper interval seconds | `10` |
+| `SNIPER_MIN_LIQUIDITY` | bot | Sniper liquidity floor | `1000` |
 
-**This software is for educational purposes only.** Trading cryptocurrencies involves substantial risk of loss. This bot trades real funds automatically. Use at your own risk. The authors are not responsible for any financial losses. Never trade with funds you cannot afford to lose. Always test with small amounts first.
+## Local setup with Docker Compose
+
+1. Copy the environment file and fill required secrets:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Start PostgreSQL, Redis, migrations, bot, backend, and placeholder frontend:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. Verify the backend:
+
+   ```bash
+   curl http://localhost:8000/api/health
+   ```
+
+4. Backend API runs at `http://localhost:8000`; frontend placeholder is published on `http://localhost:3000` until the React app is added.
+
+## Manual setup without Docker
+
+1. Install PostgreSQL 16 and Redis 7 locally.
+2. Create the database:
+
+   ```bash
+   createdb savage_trading
+   createuser savage
+   psql -c "ALTER USER savage WITH PASSWORD 'savage';"
+   psql -c "GRANT ALL PRIVILEGES ON DATABASE savage_trading TO savage;"
+   ```
+
+3. Install bot dependencies:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+4. Install backend dependencies:
+
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+5. Run migrations:
+
+   ```bash
+   export DATABASE_URL=postgresql://savage:savage@localhost:5432/savage_trading
+   alembic upgrade head
+   ```
+
+6. Start services in separate shells:
+
+   ```bash
+   python bot.py
+   uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+   ```
+
+## Railway deployment
+
+1. Create a Railway project from this repository.
+2. Add PostgreSQL and Redis addons.
+3. Set required variables from `.env.example` in Railway variables.
+4. Ensure `DATABASE_URL` and `REDIS_URL` point to the Railway addon values.
+5. Railway uses `railway.toml`, builds `backend/Dockerfile`, runs `alembic upgrade head`, then starts `uvicorn` on `$PORT`.
+6. Deploy the bot as a separate Railway service using the root `Dockerfile` if you want bot and dashboard to scale independently.
+
+## User registration and dashboard login
+
+1. Admin starts the Telegram bot.
+2. Admin allows a user with the bot command `/adduser <telegram_user_id> [username]`.
+3. The user opens the dashboard frontend.
+4. The frontend Telegram Login Widget sends signed Telegram login data to `POST /api/auth/telegram`.
+5. The backend verifies the HMAC signature, checks `allowed_users`, issues a JWT, and stores it in an HTTP-only `auth_token` cookie.
+6. Dashboard requests use the cookie or `Authorization: Bearer <token>`.
+
+## Dashboard API features
+
+- `GET /api/health`: unauthenticated health check.
+- `POST /api/auth/telegram`, `GET /api/auth/me`, `POST /api/auth/logout`: Telegram Login and JWT session management.
+- `GET /api/overview`: wallet value, PnL, win rate, active positions, kill-switch state, auto-trade state.
+- `GET /api/positions`: open positions with cached current price, unrealised PnL, TP1/TP2 levels, trailing stop level.
+- `POST /api/positions/{id}/close`: manual close flow and trade recording.
+- `GET /api/trades`: paginated completed trade history.
+- `GET /api/trades/export`: CSV export.
+- `GET /api/performance`: win rate, average ROI, best/worst trade, cumulative PnL chart data.
+- `GET/PUT /api/settings`: per-user trading settings including TP1, TP2, trailing stop, daily kill switch, max positions.
+- `POST/DELETE /api/settings/blacklist`: token blacklist management.
+- `PUT /api/settings/auto-trade`: enable or pause auto-trading.
+- `GET /api/wallet`: public wallet address and SOL/USD balance only; private keys and seed phrases are never returned.
+- `WS /ws`: authenticated real-time channel for `price_update`, `position_update`, `trade_closed`, `kill_switch_triggered`, and `new_token_detected`.
+
+## Trading logic changes
+
+- TP1 sells a configurable percentage of a position at `TP1_PERCENT` and marks `open_positions.tp1_hit`.
+- TP2 closes the remaining position after TP1 when ROI reaches `TP2_PERCENT`.
+- Trailing stop-loss tracks `peak_price` and closes when price falls by `TRAILING_SL_PERCENT` from the peak.
+- Daily loss kill switch records `daily_loss_records`, disables `user_wallets.auto_trade`, and notifies the user when realised daily losses exceed `DAILY_LOSS_LIMIT_PCT`.
