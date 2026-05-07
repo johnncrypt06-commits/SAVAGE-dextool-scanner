@@ -1,5 +1,8 @@
 import json
+import logging
 import redis.asyncio as redis
+
+logger = logging.getLogger(__name__)
 
 
 class RedisPool:
@@ -7,8 +10,16 @@ class RedisPool:
         self.client: redis.Redis | None = None
 
     async def connect(self, url: str):
-        self.client = redis.from_url(url, decode_responses=True)
-        await self.client.ping()
+        if not url:
+            logger.warning('REDIS_URL is empty – running without Redis')
+            return
+        try:
+            self.client = redis.from_url(url, decode_responses=True)
+            await self.client.ping()
+            logger.info('Redis connected')
+        except Exception as exc:
+            logger.warning('Redis unavailable (%s) – running without cache/pubsub', exc)
+            self.client = None
 
     async def close(self):
         if self.client:

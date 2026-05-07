@@ -12,6 +12,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 database_url = os.getenv('DATABASE_URL') or config.get_main_option('sqlalchemy.url')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
 config.set_main_option('sqlalchemy.url', database_url.replace('postgresql://', 'postgresql+asyncpg://', 1))
 
 target_metadata = Base.metadata
