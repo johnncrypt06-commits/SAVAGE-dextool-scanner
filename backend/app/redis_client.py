@@ -1,8 +1,12 @@
+import asyncio
 import json
 import logging
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
+
+REDIS_CONNECT_TIMEOUT = 5
+REDIS_SOCKET_TIMEOUT = 5
 
 
 class RedisPool:
@@ -14,11 +18,21 @@ class RedisPool:
             logger.warning('REDIS_URL is empty – running without Redis')
             return
         try:
-            self.client = redis.from_url(url, decode_responses=True)
-            await self.client.ping()
+            self.client = redis.from_url(
+                url,
+                decode_responses=True,
+                socket_timeout=REDIS_SOCKET_TIMEOUT,
+                socket_connect_timeout=REDIS_CONNECT_TIMEOUT,
+            )
+            await asyncio.wait_for(self.client.ping(), timeout=REDIS_CONNECT_TIMEOUT)
             logger.info('Redis connected')
         except Exception as exc:
             logger.warning('Redis unavailable (%s) – running without cache/pubsub', exc)
+            if self.client:
+                try:
+                    await self.client.aclose()
+                except Exception:
+                    pass
             self.client = None
 
     async def close(self):
