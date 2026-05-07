@@ -33,7 +33,7 @@ export default function Sidebar() {
         <div className="w-8 h-8 rounded-lg bg-green/15 flex items-center justify-center flex-shrink-0">
           <TrendingUp size={18} className="text-green" />
         </div>
-        {!collapsed && <span className="text-lg font-bold tracking-wider text-green">SAVAGE</span>}
+        {!collapsed && <span className="text-lg font-bold tracking-wider text-green">ALPHA</span>}
       </div>
 
       <nav className="flex-1 py-4 flex flex-col gap-1 px-2">

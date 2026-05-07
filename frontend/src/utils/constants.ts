@@ -1,4 +1,4 @@
-export const APP_NAME = 'SAVAGE';
+export const APP_NAME = 'ALPHA';
 export const APP_TAGLINE = 'Advanced Solana Trading Terminal';
 
 export const CLOSE_REASON_COLORS: Record<string, { bg: string; text: string }> = {

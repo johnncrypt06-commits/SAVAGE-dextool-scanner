@@ -27,7 +27,7 @@ export default function Layout() {
           <div className="absolute inset-0 bg-bg/80" onClick={() => setMobileOpen(false)} />
           <nav className="relative w-64 h-full bg-surface border-r border-border p-4 flex flex-col gap-1">
             <div className="flex items-center justify-between mb-6">
-              <span className="text-lg font-bold tracking-wider text-green">SAVAGE</span>
+              <span className="text-lg font-bold tracking-wider text-green">ALPHA</span>
               <button onClick={() => setMobileOpen(false)} className="text-text-muted cursor-pointer">
                 <X size={20} />
               </button>
