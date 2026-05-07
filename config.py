@@ -91,7 +91,7 @@ API_ENABLED: bool = _env("API_ENABLED", default="false", cast=lambda v: v.lower(
 API_PORT: int = _env("API_PORT", default="8080", cast=int)
 API_KEY: str = _env("API_KEY", default="")
 
-ALERT_BROADCAST: bool = _env("ALERT_BROADCAST", default="false", cast=lambda v: v.lower() in ("true", "1", "yes"))
+ALERT_BROADCAST: bool = _env("ALERT_BROADCAST", default="true", cast=lambda v: v.lower() in ("true", "1", "yes"))
 
 SNIPER_ENABLED: bool = _env("SNIPER_ENABLED", default="false", cast=lambda v: v.lower() in ("true", "1", "yes"))
 SNIPER_CHECK_INTERVAL: int = _env("SNIPER_CHECK_INTERVAL", default="10", cast=int)
