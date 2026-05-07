@@ -12,8 +12,9 @@ from ..config import FRONTEND_URL, TELEGRAM_BOT_TOKEN
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-COOKIE_SECURE = FRONTEND_URL.startswith('https://')
-COOKIE_SAMESITE = 'none' if COOKIE_SECURE else 'lax'
+LOCAL_FRONTEND = FRONTEND_URL.startswith(('http://localhost', 'http://127.0.0.1'))
+COOKIE_SECURE = not LOCAL_FRONTEND
+COOKIE_SAMESITE = 'lax' if LOCAL_FRONTEND else 'none'
 
 
 async def _send_login_confirmation(user_id: int) -> None:
