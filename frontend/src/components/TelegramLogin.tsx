@@ -1,34 +1,31 @@
 import { useEffect, useRef } from 'react';
 
 const BOT_NAME = import.meta.env.VITE_TELEGRAM_BOT_NAME || 'your_bot_name';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-interface TelegramLoginProps {
-  onAuth: (user: Record<string, unknown>) => void;
-}
-
-export default function TelegramLogin({ onAuth }: TelegramLoginProps) {
+export default function TelegramLogin() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    (window as any).onTelegramAuth = (user: Record<string, unknown>) => {
-      onAuth(user);
-    };
-
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
     script.setAttribute('data-telegram-login', BOT_NAME);
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-radius', '8');
-    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+    script.setAttribute('data-auth-url', `${API_URL}/api/auth/telegram/callback`);
     script.setAttribute('data-request-access', 'write');
     script.async = true;
 
     containerRef.current?.appendChild(script);
+  }, []);
 
-    return () => {
-      delete (window as any).onTelegramAuth;
-    };
-  }, [onAuth]);
-
-  return <div ref={containerRef} className="flex justify-center" />;
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div ref={containerRef} className="flex justify-center" />
+      <p className="text-text-muted text-xs text-center leading-relaxed max-w-[280px]">
+        After Telegram says it sent a message, open Telegram and confirm the login.
+        If no message arrives, open/start the bot in Telegram and retry.
+      </p>
+    </div>
+  );
 }

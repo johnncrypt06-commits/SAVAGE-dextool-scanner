@@ -1,42 +1,30 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramLogin from '../components/TelegramLogin';
-import { api } from '../api/client';
 import { useAuthStore } from '../store/authStore';
-import type { TelegramLoginData } from '../api/types';
 import { APP_NAME, APP_TAGLINE } from '../utils/constants';
-import Spinner from '../components/ui/Spinner';
+
+const ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Access denied. Contact admin to register your account.',
+  invalid: 'Login failed — invalid Telegram signature. Please try again.',
+};
 
 export default function Login() {
   const navigate = useNavigate();
-  const { user, setUser } = useAuthStore();
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+  const { user } = useAuthStore();
+
+  const errorParam = searchParams.get('error');
+  const displayError = useMemo(
+    () => (errorParam ? ERROR_MESSAGES[errorParam] || 'Login failed. Please try again.' : ''),
+    [errorParam],
+  );
 
   useEffect(() => { document.title = `${APP_NAME} — Login`; }, []);
 
   useEffect(() => {
     if (user) navigate('/overview', { replace: true });
   }, [user, navigate]);
-
-  const handleAuth = useCallback(async (data: Record<string, unknown>) => {
-    setError('');
-    setLoading(true);
-    try {
-      const userInfo = await api.loginTelegram(data as unknown as TelegramLoginData);
-      setUser(userInfo);
-      navigate('/overview', { replace: true });
-    } catch (e: any) {
-      const msg = e?.message || '';
-      if (msg.includes('not registered') || msg.includes('403') || msg.includes('Forbidden')) {
-        setError('Access denied. Contact admin to register your account.');
-      } else {
-        setError('Login failed. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [navigate, setUser]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg px-4">
@@ -49,18 +37,11 @@ export default function Login() {
       </div>
 
       <div className="bg-surface/80 backdrop-blur-xl border border-border rounded-xl p-8 w-full max-w-sm text-center">
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-4">
-            <Spinner size={28} />
-            <span className="text-text-secondary text-sm">Authenticating...</span>
-          </div>
-        ) : (
-          <TelegramLogin onAuth={handleAuth} />
-        )}
+        <TelegramLogin />
 
-        {error && (
+        {displayError && (
           <p className="mt-4 text-sm text-red bg-red/10 border border-red/20 rounded-lg px-3 py-2">
-            {error}
+            {displayError}
           </p>
         )}
       </div>
