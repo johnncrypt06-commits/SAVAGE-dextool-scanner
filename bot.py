@@ -125,6 +125,23 @@ async def _get_user_trader(update):
     return ut
 
 
+async def _get_trading_wallet_balance_summary() -> tuple[int, float]:
+    trading_users = await db.get_all_trading_users()
+    total_wallet_balance = 0.0
+    for user_wallet in trading_users:
+        uid = user_wallet["user_id"]
+        try:
+            user_trader = await create_user_trader(uid)
+            if user_trader:
+                if CHAIN.upper() == "SOL":
+                    total_wallet_balance += await user_trader.get_balance()
+                else:
+                    total_wallet_balance += await user_trader.get_balance(CHAIN)
+        except Exception as exc:
+            logger.warning("Could not fetch wallet balance for user %d: %s", uid, exc)
+    return len(trading_users), total_wallet_balance
+
+
 def _generate_solana_wallet() -> tuple[Keypair, str]:
     mnemo = Mnemonic("english")
     seed_phrase = mnemo.generate(strength=128)
@@ -447,15 +464,15 @@ async def cmd_start(update, context):
     else:
         balance = await trader.get_balance(CHAIN)
 
-    trading_users = await db.get_all_trading_users()
+    trading_user_count, total_wallet_balance = await _get_trading_wallet_balance_summary()
 
     alert_status = "ON" if alerts_enabled else "OFF"
     msg = (
         "🚀 <b>Bot Started</b>\n\n"
         f"Chain: {CHAIN}\n"
         f"Admin balance: {balance:.4f} {native}\n"
-        f"Active traders: {len(trading_users)}\n"
-        f"Alerts: {alert_status} (<code>/alerts on</code> or <code>/alerts off</code>)\n"
+        f"Trading wallets: {trading_user_count} | Balance: {total_wallet_balance:.4f} {native}\n"
+        f"Alerts: {alert_status} (<code>/alerts on</code> or <code>/alerts off</code> controls broadcast)\n"
         f"Buy: {BUY_PERCENT}% | TP: {TAKE_PROFIT}% | Slippage: {SLIPPAGE}%\n"
         f"Scan every {SCAN_INTERVAL}s | Monitor every {MONITOR_INTERVAL}s\n"
         f"MCap: ${MIN_MCAP:,}–${MAX_MCAP:,} | Min Liq: ${MIN_LIQUIDITY:,}"
@@ -2038,29 +2055,17 @@ async def post_init(application):
     await db.upsert_bot_chat(TELEGRAM_CHAT_ID, "private", "admin")
 
     native = NATIVE_SYMBOL.get(CHAIN.upper(), "SOL")
-    trading_users = await db.get_all_trading_users()
-    total_wallet_balance = 0.0
-    for user_wallet in trading_users:
-        uid = user_wallet["user_id"]
-        try:
-            user_trader = await create_user_trader(uid)
-            if user_trader:
-                if CHAIN.upper() == "SOL":
-                    total_wallet_balance += await user_trader.get_balance()
-                else:
-                    total_wallet_balance += await user_trader.get_balance(CHAIN)
-        except Exception as exc:
-            logger.warning("Could not fetch wallet balance for user %d: %s", uid, exc)
+    trading_user_count, total_wallet_balance = await _get_trading_wallet_balance_summary()
 
     global api_runner
     api_runner = await start_api_server()
 
-    logger.info("Bot initialised – chain=%s, wallet_balance=%.6f %s, traders=%d", CHAIN, total_wallet_balance, native, len(trading_users))
+    logger.info("Bot initialised – chain=%s, trading_wallet_balance=%.6f %s, traders=%d", CHAIN, total_wallet_balance, native, trading_user_count)
     await notifier.send_message(
         f"🔥 <b>Älpha Scanner Awakened</b>\n\n"
         f"Chain: {CHAIN}\n\n"
-        f"Wallet: {total_wallet_balance:.4f} {native}\n\n"
-        f"Active Traders: {len(trading_users)}\n\n"
+        f"Trading Wallets: {trading_user_count} | Balance: {total_wallet_balance:.4f} {native}\n\n"
+        f"Active Traders: {trading_user_count}\n\n"
         f"Signal Source: Dextool\n\n"
         f"The market is being watched. Send /start to begin the hunt."
     )
