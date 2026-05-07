@@ -213,7 +213,7 @@ export default function Settings() {
             )}
             {settings?.blacklist.map((item) => (
               <div
-                key={item.token_address}
+                key={`${item.token_address}-${item.chain}-${item.added_by}`}
                 className="flex items-center justify-between bg-bg rounded-lg px-3 py-2 border border-border/50"
               >
                 <div className="min-w-0 flex-1">
@@ -226,7 +226,7 @@ export default function Settings() {
                   <p className="text-xs text-text-muted mt-0.5">{formatDate(item.added_at)}</p>
                 </div>
                 <button
-                  onClick={() => removeBlacklist.mutate(item.token_address)}
+                  onClick={() => removeBlacklist.mutate({ address: item.token_address, chain: item.chain, addedBy: item.added_by })}
                   className="text-text-muted hover:text-red transition-colors ml-2 cursor-pointer"
                 >
                   <X size={14} />

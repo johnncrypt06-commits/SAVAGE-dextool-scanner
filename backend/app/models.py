@@ -122,7 +122,7 @@ class TokenBlacklist(Base):
     reason: Mapped[str] = mapped_column(Text, default='')
     added_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    __table_args__ = (UniqueConstraint('token_address', 'chain'),)
+    __table_args__ = (UniqueConstraint('token_address', 'chain', 'added_by'),)
 
 
 class TokenWhitelist(Base):

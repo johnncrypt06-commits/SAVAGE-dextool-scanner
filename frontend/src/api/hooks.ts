@@ -38,10 +38,10 @@ export function useClosePosition() {
   });
 }
 
-export function useTrades(page: number, perPage: number) {
+export function useTrades(page: number, perPage: number, sortBy = 'closed_at', sortOrder = 'desc') {
   return useQuery({
-    queryKey: ['trades', page, perPage],
-    queryFn: () => api.getTrades(page, perPage),
+    queryKey: ['trades', page, perPage, sortBy, sortOrder],
+    queryFn: () => api.getTrades(page, perPage, sortBy, sortOrder),
   });
 }
 
@@ -78,7 +78,8 @@ export function useAddBlacklist() {
 export function useRemoveBlacklist() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (address: string) => api.removeBlacklist(address),
+    mutationFn: (params: { address: string; chain?: string; addedBy?: number }) =>
+      api.removeBlacklist(params.address, params.chain, params.addedBy),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   });
 }

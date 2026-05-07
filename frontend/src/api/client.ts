@@ -41,8 +41,10 @@ export const api = {
   closePosition: (id: number) =>
     apiFetch<{ success: boolean; tx_hash: string }>(`/api/positions/${id}/close`, { method: 'POST' }),
 
-  getTrades: (page = 1, perPage = 20) =>
-    apiFetch<{ trades: TradeResponse[]; total: number }>(`/api/trades?page=${page}&per_page=${perPage}`),
+  getTrades: (page = 1, perPage = 20, sortBy = 'closed_at', sortOrder = 'desc') =>
+    apiFetch<{ items: TradeResponse[]; page: number; per_page: number; total: number }>(
+      `/api/trades?page=${page}&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`,
+    ),
   exportTrades: () => `${API_URL}/api/trades/export`,
 
   getPerformance: () => apiFetch<PerformanceResponse>('/api/performance'),
@@ -52,8 +54,8 @@ export const api = {
     apiFetch<UserSettingsResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   addBlacklist: (data: { token_address: string; chain?: string; reason?: string }) =>
     apiFetch<void>('/api/settings/blacklist', { method: 'POST', body: JSON.stringify(data) }),
-  removeBlacklist: (address: string) =>
-    apiFetch<void>(`/api/settings/blacklist/${address}`, { method: 'DELETE' }),
+  removeBlacklist: (address: string, chain = 'SOL', addedBy?: number) =>
+    apiFetch<void>(`/api/settings/blacklist/${address}?chain=${chain}${addedBy != null ? `&added_by=${addedBy}` : ''}`, { method: 'DELETE' }),
   toggleAutoTrade: (enabled: boolean) =>
     apiFetch<void>('/api/settings/auto-trade', { method: 'PUT', body: JSON.stringify({ enabled }) }),
 

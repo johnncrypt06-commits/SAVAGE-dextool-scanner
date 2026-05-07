@@ -25,7 +25,7 @@ export default function TradeHistory() {
   const [sortKey, setSortKey] = useState('closed_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const { data, isLoading } = useTrades(page, perPage);
+  const { data, isLoading } = useTrades(page, perPage, sortKey, sortDir);
 
   const handleSort = useCallback((key: string) => {
     if (sortKey === key) {
@@ -34,14 +34,8 @@ export default function TradeHistory() {
       setSortKey(key);
       setSortDir('desc');
     }
+    setPage(1);
   }, [sortKey]);
-
-  const sortedTrades = [...(data?.trades || [])].sort((a, b) => {
-    let cmp = 0;
-    if (sortKey === 'closed_at') cmp = new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime();
-    else if (sortKey === 'roi_percent') cmp = a.roi_percent - b.roi_percent;
-    return sortDir === 'asc' ? cmp : -cmp;
-  });
 
   const totalPages = data ? Math.ceil(data.total / perPage) : 0;
 
@@ -129,7 +123,7 @@ export default function TradeHistory() {
       <Card className="p-0 overflow-hidden">
         <Table
           columns={columns}
-          data={sortedTrades}
+          data={data?.items ?? []}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={handleSort}
