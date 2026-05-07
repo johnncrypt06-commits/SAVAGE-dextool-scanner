@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,12 +7,16 @@ from .redis_client import redis_pool
 from .ws_manager import ws_manager
 from .routes import router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info('SAVAGE dashboard starting up')
     await redis_pool.connect(REDIS_URL)
     if redis_pool.client:
         await ws_manager.start_redis_listener()
+    logger.info('Lifespan startup complete – ready to serve')
     yield
     await ws_manager.stop_redis_listener()
     await redis_pool.close()
