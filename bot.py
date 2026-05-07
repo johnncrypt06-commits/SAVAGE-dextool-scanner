@@ -2189,17 +2189,9 @@ async def _handle_buy_confirm_callback(query, user_id, token_prefix, amount):
     token_address = _pending_buys.pop(cache_key, None)
 
     if token_address is None:
-        import aiosqlite
-        from db import DB_PATH
-        async with aiosqlite.connect(str(DB_PATH)) as conn:
-            conn.row_factory = aiosqlite.Row
-            cur = await conn.execute(
-                "SELECT contract_address FROM detected_tokens WHERE contract_address LIKE ? ORDER BY detected_at DESC LIMIT 1",
-                (token_prefix + "%",),
-            )
-            row = await cur.fetchone()
-            if row:
-                token_address = row["contract_address"]
+        row = await db.find_detected_token_by_prefix(token_prefix)
+        if row:
+            token_address = row["contract_address"]
     if token_address is None:
         positions = await db.get_open_positions(user_id=user_id)
         for p in positions:
@@ -2295,20 +2287,12 @@ async def _handle_quickbuy_callback(query, user_id, token_prefix, amount):
         await query.answer("⛔ Not authorized.", show_alert=True)
         return
 
-    import aiosqlite
-    from db import DB_PATH
     token_address = None
     symbol = "?"
-    async with aiosqlite.connect(str(DB_PATH)) as conn:
-        conn.row_factory = aiosqlite.Row
-        cur = await conn.execute(
-            "SELECT contract_address, symbol FROM detected_tokens WHERE contract_address LIKE ? ORDER BY detected_at DESC LIMIT 1",
-            (token_prefix + "%",),
-        )
-        row = await cur.fetchone()
-        if row:
-            token_address = row["contract_address"]
-            symbol = row["symbol"] or "?"
+    row = await db.find_detected_token_by_prefix(token_prefix)
+    if row:
+        token_address = row["contract_address"]
+        symbol = row["symbol"] or "?"
 
     if token_address is None:
         await query.answer("Token no longer available.", show_alert=True)

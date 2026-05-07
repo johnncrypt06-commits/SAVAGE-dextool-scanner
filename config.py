@@ -74,6 +74,19 @@ MAX_BUY_AMOUNT: float = _env("MAX_BUY_AMOUNT", default="1.0", cast=float)  # max
 COMPOUND_ENABLED: bool = _env("COMPOUND_ENABLED", default="false", cast=lambda v: v.lower() in ("true", "1", "yes"))
 COMPOUND_PERCENT: int = _env("COMPOUND_PERCENT", default="50", cast=int)
 
+DATABASE_URL: str = _env("DATABASE_URL", default="postgresql://savage:savage@localhost:5432/savage_trading")
+REDIS_URL: str = _env("REDIS_URL", default="redis://localhost:6379/0")
+JWT_SECRET: str = _env("JWT_SECRET", default="change-me-in-production")
+ADMIN_TELEGRAM_IDS: list[int] = [int(x.strip()) for x in _env("ADMIN_TELEGRAM_IDS", default=str(TELEGRAM_CHAT_ID)).split(",") if x.strip()]
+FRONTEND_URL: str = _env("FRONTEND_URL", default="http://localhost:5173")
+BACKEND_PORT: int = _env("BACKEND_PORT", default="8000", cast=int)
+BIRDEYE_API_KEY: str = _env("BIRDEYE_API_KEY", default="")
+TP1_PERCENT: float = _env("TP1_PERCENT", default="50", cast=float)
+TP1_SELL_PERCENT: float = _env("TP1_SELL_PERCENT", default="50", cast=float)
+TP2_PERCENT: float = _env("TP2_PERCENT", default="100", cast=float)
+TRAILING_SL_PERCENT: float = _env("TRAILING_SL_PERCENT", default="15", cast=float)
+DAILY_LOSS_LIMIT_PCT: float = _env("DAILY_LOSS_LIMIT_PCT", default="20", cast=float)
+
 API_ENABLED: bool = _env("API_ENABLED", default="false", cast=lambda v: v.lower() in ("true", "1", "yes"))
 API_PORT: int = _env("API_PORT", default="8080", cast=int)
 API_KEY: str = _env("API_KEY", default="")

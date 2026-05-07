@@ -1,16 +1,97 @@
 services:
-  bot:
-    build: .
-    container_name: dextool-scanner
-    restart: unless-stopped
-    env_file:
-      - .env
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: savage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-savage}
+      POSTGRES_DB: savage_trading
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${API_PORT:-8080}:${API_PORT:-8080}"
-    # For local development, mount data directory:
-    #   docker run -v ./data:/app/data ...
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U savage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://savage:${POSTGRES_PASSWORD:-savage}@postgres:5432/savage_trading
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://savage:${POSTGRES_PASSWORD:-savage}@postgres:5432/savage_trading
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://savage:${POSTGRES_PASSWORD:-savage}@postgres:5432/savage_trading
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${FRONTEND_API_URL:-http://localhost:8000}
+        VITE_WS_URL: ${FRONTEND_WS_URL:-ws://localhost:8000}
+        VITE_TELEGRAM_BOT_NAME: ${TELEGRAM_BOT_NAME:-your_bot}
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
