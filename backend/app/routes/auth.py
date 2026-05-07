@@ -1,12 +1,16 @@
 import logging
+import secrets
+import string
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import RedirectResponse
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from ..models import AllowedUser
+from ..models import AllowedUser, DashboardLoginCode
 from ..schemas import TelegramLoginData, UserInfo
 from ..auth import verify_telegram_login, create_jwt, is_admin
 from ..deps import get_current_user
@@ -109,3 +113,82 @@ async def me(user: dict = Depends(get_current_user)):
 async def logout(response: Response):
     response.delete_cookie('auth_token', samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
     return {'success': True}
+
+
+_LOGIN_CODE_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS dashboard_login_codes (
+    code VARCHAR(10) PRIMARY KEY,
+    user_id BIGINT,
+    username VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    claimed_at TIMESTAMPTZ,
+    consumed_at TIMESTAMPTZ
+)
+"""
+
+
+async def _ensure_login_code_table(db: AsyncSession) -> None:
+    try:
+        await db.execute(text(_LOGIN_CODE_TABLE_DDL))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
+
+def _generate_code(length: int = 8) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+@router.post('/bot-login/start')
+async def bot_login_start(db: AsyncSession = Depends(get_db)):
+    await _ensure_login_code_table(db)
+    code = _generate_code()
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=10)
+    row = DashboardLoginCode(code=code, expires_at=expires_at)
+    db.add(row)
+    await db.commit()
+    return {'code': code, 'expires_at': expires_at.isoformat()}
+
+
+@router.get('/bot-login/status')
+async def bot_login_status(
+    code: str = Query(...),
+    response: Response = None,
+    db: AsyncSession = Depends(get_db),
+):
+    await _ensure_login_code_table(db)
+    row = await db.get(DashboardLoginCode, code)
+    if not row:
+        raise HTTPException(status_code=404, detail='Invalid code')
+    now = datetime.now(timezone.utc)
+    if row.expires_at.tzinfo is None:
+        exp = row.expires_at.replace(tzinfo=timezone.utc)
+    else:
+        exp = row.expires_at
+    if now > exp and row.claimed_at is None:
+        return {'status': 'expired'}
+    if row.claimed_at is None:
+        return {'status': 'pending'}
+    if row.consumed_at is not None:
+        return {'status': 'expired'}
+    row.consumed_at = now
+    await db.commit()
+    user_id = row.user_id
+    username = row.username or ''
+    admin = is_admin(user_id)
+    token = create_jwt(user_id, username, admin)
+    response.set_cookie(
+        'auth_token',
+        token,
+        httponly=True,
+        samesite=COOKIE_SAMESITE,
+        max_age=72 * 3600,
+        secure=COOKIE_SECURE,
+    )
+    return {
+        'status': 'confirmed',
+        'user': {'user_id': user_id, 'username': username, 'is_admin': admin},
+    }

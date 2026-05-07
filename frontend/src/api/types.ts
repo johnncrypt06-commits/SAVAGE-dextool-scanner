@@ -104,3 +104,13 @@ export interface WsEvent {
   type: 'price_update' | 'position_update' | 'trade_closed' | 'kill_switch_triggered' | 'new_token_detected';
   data: unknown;
 }
+
+export interface BotLoginStartResponse {
+  code: string;
+  expires_at: string;
+}
+
+export interface BotLoginStatusResponse {
+  status: 'pending' | 'confirmed' | 'expired';
+  user?: UserInfo;
+}

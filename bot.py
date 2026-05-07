@@ -65,6 +65,7 @@ from config import WHALE_TRACKING_ENABLED, WHALE_CHECK_INTERVAL, WHALE_MIN_SOL, 
 from config import ADMIN_TELEGRAM_IDS
 from api import start_api_server, stop_api_server
 from config import SNIPER_ENABLED, SNIPER_CHECK_INTERVAL, SNIPER_MIN_LIQUIDITY
+from config import AUTO_START_SCANNER
 from sniper import Sniper
 
 trader = None
@@ -376,6 +377,7 @@ async def cmd_help(update, context):
         lines.append("/stats — Detailed trading performance analytics")
         lines.append("/pnl [days] — P&amp;L summary (default: today)")
         lines.append("/lowcaps [count] — Show recent detected tokens")
+        lines.append("/login &lt;code&gt; — Confirm dashboard login with a code from the web UI")
         lines.append("")
         lines.append("<b>⚙️ Settings:</b>")
         lines.append("/mysettings — View/edit your personal trading settings")
@@ -435,28 +437,43 @@ async def cmd_help(update, context):
         await update.message.reply_html("\n".join(lines))
 
 
+async def _start_scanner_tasks() -> bool:
+    """Start all scanner/monitor/whale/sniper/report background tasks.
+
+    Returns True if tasks were newly created, False if already running.
+    """
+    global is_running, scanner_task, monitor_task, whale_task, daily_report_task, sniper_task, dca_task, limit_order_task
+
+    if is_running:
+        return False
+
+    is_running = True
+
+    if scanner_task is None or scanner_task.done():
+        scanner_task = asyncio.create_task(scanner_loop())
+    if monitor and (monitor_task is None or monitor_task.done()):
+        monitor_task = asyncio.create_task(monitor.start())
+    if whale_tracker and (whale_task is None or whale_task.done()):
+        whale_task = asyncio.create_task(whale_tracker.start())
+    if sniper and SNIPER_ENABLED and (sniper_task is None or sniper_task.done()):
+        sniper_task = asyncio.create_task(sniper.start())
+    if daily_report_task is None or daily_report_task.done():
+        daily_report_task = asyncio.create_task(daily_report_loop())
+    if dca_task is None or dca_task.done():
+        dca_task = asyncio.create_task(dca_loop())
+    if limit_order_task is None or limit_order_task.done():
+        limit_order_task = asyncio.create_task(limit_order_loop())
+
+    return True
+
+
 async def cmd_start(update, context):
     await _register_chat(update)
     if not _is_admin(update):
         await update.message.reply_text("Admin only.")
         return
 
-    global is_running, scanner_task, monitor_task, whale_task, daily_report_task, sniper_task, dca_task, limit_order_task
-
-    if is_running:
-        await update.message.reply_text("Bot is already running.")
-        return
-
-    is_running = True
-    scanner_task = asyncio.create_task(scanner_loop())
-    monitor_task = asyncio.create_task(monitor.start())
-    if whale_tracker:
-        whale_task = asyncio.create_task(whale_tracker.start())
-    if sniper and SNIPER_ENABLED:
-        sniper_task = asyncio.create_task(sniper.start())
-    daily_report_task = asyncio.create_task(daily_report_loop())
-    dca_task = asyncio.create_task(dca_loop())
-    limit_order_task = asyncio.create_task(limit_order_loop())
+    newly_started = await _start_scanner_tasks()
 
     native = NATIVE_SYMBOL.get(CHAIN.upper(), "SOL")
     if CHAIN.upper() == "SOL":
@@ -467,8 +484,11 @@ async def cmd_start(update, context):
     trading_user_count, total_wallet_balance = await _get_trading_wallet_balance_summary()
 
     alert_status = "ON" if alerts_enabled else "OFF"
+    scanner_label = "🟢 Running" if is_running else "🔴 Stopped"
+    header = "🚀 <b>Bot Started</b>" if newly_started else f"ℹ️ <b>Bot Already Running</b>"
     msg = (
-        "🚀 <b>Bot Started</b>\n\n"
+        f"{header}\n\n"
+        f"Scanner: {scanner_label}\n"
         f"Chain: {CHAIN}\n"
         f"Admin balance: {balance:.4f} {native}\n"
         f"Trading wallets: {trading_user_count} | Balance: {total_wallet_balance:.4f} {native}\n"
@@ -478,7 +498,7 @@ async def cmd_start(update, context):
         f"MCap: ${MIN_MCAP:,}–${MAX_MCAP:,} | Min Liq: ${MIN_LIQUIDITY:,}"
     )
     await update.message.reply_html(msg)
-    logger.info("Bot started by user %s", update.effective_user.id)
+    logger.info("Bot %s by user %s", "started" if newly_started else "status checked", update.effective_user.id)
 
 
 async def cmd_stop(update, context):
@@ -2061,14 +2081,33 @@ async def post_init(application):
     api_runner = await start_api_server()
 
     logger.info("Bot initialised – chain=%s, trading_wallet_balance=%.6f %s, traders=%d", CHAIN, total_wallet_balance, native, trading_user_count)
-    await notifier.send_message(
+
+    auto_started = False
+    auto_start_error = ""
+    if AUTO_START_SCANNER:
+        try:
+            auto_started = await _start_scanner_tasks()
+        except Exception as exc:
+            auto_start_error = str(exc)
+            logger.exception("AUTO_START_SCANNER failed: %s", exc)
+
+    alert_status = "ON" if alerts_enabled else "OFF"
+    scanner_status = "🟢 Running" if is_running else "🔴 Stopped"
+    startup_msg = (
         f"🔥 <b>Älpha Scanner Awakened</b>\n\n"
-        f"Chain: {CHAIN}\n\n"
-        f"Trading Wallets: {trading_user_count} | Balance: {total_wallet_balance:.4f} {native}\n\n"
-        f"Active Traders: {trading_user_count}\n\n"
-        f"Signal Source: Dextool\n\n"
-        f"The market is being watched. Send /start to begin the hunt."
+        f"Chain: {CHAIN}\n"
+        f"Scanner: {scanner_status} | Alerts: {alert_status}\n"
+        f"Trading Wallets: {trading_user_count} | Balance: {total_wallet_balance:.4f} {native}\n"
+        f"Signal Source: Dextool\n"
     )
+    if auto_started:
+        startup_msg += "\n🚀 Scanner auto-started."
+    elif AUTO_START_SCANNER and auto_start_error:
+        startup_msg += f"\n⚠️ Auto-start failed: {auto_start_error[:200]}"
+    elif not AUTO_START_SCANNER:
+        startup_msg += "\nSend /start to begin scanning."
+
+    await notifier.send_message(startup_msg)
 
 
 async def shutdown(application):
@@ -2959,12 +2998,57 @@ async def cmd_alerts(update, context):
     arg = context.args[0].lower()
     if arg in ("on", "yes", "1", "true"):
         alerts_enabled = True
-        await update.message.reply_html("📢 Lowcap alerts <b>enabled</b>. New detections will be broadcast to all chats.")
+        scanner_note = ""
+        if not is_running:
+            started = await _start_scanner_tasks()
+            if started:
+                scanner_note = "\n🚀 Scanner was not running — started automatically."
+        await update.message.reply_html(f"📢 Lowcap alerts <b>enabled</b>. New detections will be broadcast to all chats.{scanner_note}")
     elif arg in ("off", "no", "0", "false"):
         alerts_enabled = False
         await update.message.reply_html("🔇 Lowcap alerts <b>disabled</b>. Scanner still runs silently. Use /lowcaps to check manually.")
     else:
         await update.message.reply_html("Usage: <code>/alerts on|off</code>")
+
+
+async def cmd_login(update, context):
+    """Verify a dashboard login code sent from the web UI."""
+    await _register_chat(update)
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name or ""
+
+    if not context.args:
+        await update.message.reply_html(
+            "Usage: <code>/login CODE</code>\n\n"
+            "Get the code from the Älpha dashboard login page."
+        )
+        return
+
+    code = context.args[0].upper().strip()
+
+    is_admin_user = user_id in ADMIN_TELEGRAM_IDS
+    is_allowed = await db.is_user_allowed(user_id)
+
+    if not is_admin_user and not is_allowed:
+        await update.message.reply_html(
+            "🔒 <b>Access Denied</b>\n\n"
+            f"Your user ID: <code>{user_id}</code>\n"
+            "You are not authorized for the dashboard.\n"
+            "Ask the bot admin to run:\n"
+            f"<code>/adduser {user_id}</code>"
+        )
+        return
+
+    result = await db.claim_login_code(code, user_id, username)
+
+    if result == 'ok':
+        await update.message.reply_html("✅ <b>Älpha dashboard login confirmed.</b>\nReturn to the dashboard — it will log you in automatically.")
+    elif result == 'expired':
+        await update.message.reply_html("⏰ That code has expired. Generate a new one from the dashboard login page.")
+    elif result == 'already_claimed':
+        await update.message.reply_html("⚠️ That code has already been used. Generate a new one from the dashboard.")
+    else:
+        await update.message.reply_html("❌ Invalid code. Check the code and try again, or generate a new one.")
 
 
 async def cmd_lowcaps(update, context):
@@ -3804,6 +3888,7 @@ def main():
     app.add_handler(CommandHandler("fees", cmd_fees))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
+    app.add_handler(CommandHandler("login", cmd_login))
     app.add_handler(CommandHandler("lowcaps", cmd_lowcaps))
     app.add_handler(CommandHandler("backtest", cmd_backtest))
     app.add_handler(CommandHandler("blacklist", cmd_blacklist))
