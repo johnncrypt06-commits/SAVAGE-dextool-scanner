@@ -429,17 +429,23 @@ async def delete_user_settings(user_id: int) -> bool:
 
 async def add_to_blacklist(token_address: str, chain: str, reason: str, added_by: int) -> bool:
     try:
-        return _affected(await _execute('INSERT INTO token_blacklist (token_address, chain, reason, added_by) VALUES (?, ?, ?, ?) ON CONFLICT (token_address, chain) DO NOTHING', token_address, chain, reason, added_by)) > 0
+        return _affected(await _execute('INSERT INTO token_blacklist (token_address, chain, reason, added_by) VALUES (?, ?, ?, ?) ON CONFLICT (token_address, chain, added_by) DO NOTHING', token_address, chain, reason, added_by)) > 0
     except Exception:
         return False
 
 
-async def remove_from_blacklist(token_address: str, chain: str) -> bool:
+async def remove_from_blacklist(token_address: str, chain: str, added_by: int | None = None) -> bool:
+    if added_by is not None:
+        return _affected(await _execute('DELETE FROM token_blacklist WHERE token_address = ? AND chain = ? AND added_by = ?', token_address, chain, added_by)) > 0
     return _affected(await _execute('DELETE FROM token_blacklist WHERE token_address = ? AND chain = ?', token_address, chain)) > 0
 
 
-async def is_blacklisted(token_address: str, chain: str) -> bool:
-    return await _fetchval('SELECT 1 FROM token_blacklist WHERE token_address = ? AND chain = ?', token_address, chain) is not None
+async def is_blacklisted(token_address: str, chain: str, *, user_id: int | None = None, admin_ids: list[int] | None = None) -> bool:
+    if user_id is None:
+        return await _fetchval('SELECT 1 FROM token_blacklist WHERE token_address = ? AND chain = ?', token_address, chain) is not None
+    check_ids = [user_id] + [aid for aid in (admin_ids or []) if aid != user_id]
+    placeholders = ','.join('?' * len(check_ids))
+    return await _fetchval(f'SELECT 1 FROM token_blacklist WHERE token_address = ? AND chain = ? AND added_by IN ({placeholders})', token_address, chain, *check_ids) is not None
 
 
 async def get_blacklist() -> list[dict]:

@@ -31,7 +31,7 @@ export default function useWebSocket() {
     cleanup();
     setStatus('connecting');
 
-    const ws = new WebSocket(`${WS_URL}/ws/events`);
+    const ws = new WebSocket(`${WS_URL}/api/ws`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -39,7 +39,7 @@ export default function useWebSocket() {
       setStatus('connected');
       backoffRef.current = 1000;
       heartbeatRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
+        if (ws.readyState === WebSocket.OPEN) ws.send('ping');
       }, HEARTBEAT_INTERVAL);
     };
 

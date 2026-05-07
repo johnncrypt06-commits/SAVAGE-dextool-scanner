@@ -62,6 +62,7 @@ from scanner import scan_all_sources, fetch_token_research
 from trader import create_trader, create_user_trader, _load_solana_keypair, _get_shared_client
 from whale_tracker import WhaleTracker
 from config import WHALE_TRACKING_ENABLED, WHALE_CHECK_INTERVAL, WHALE_MIN_SOL, WHALE_COPY_ENABLED, WHALE_COPY_AMOUNT
+from config import ADMIN_TELEGRAM_IDS
 from api import start_api_server, stop_api_server
 from config import SNIPER_ENABLED, SNIPER_CHECK_INTERVAL, SNIPER_MIN_LIQUIDITY
 from sniper import Sniper
@@ -153,10 +154,6 @@ async def scanner_loop():
                     try:
                         contract = token.get("contract_address", "")
 
-                        if await db.is_blacklisted(contract, CHAIN.upper()):
-                            logger.debug("Skipping blacklisted token %s", token.get("symbol"))
-                            continue
-
                         await db.save_detected_token(token)
 
                         if alerts_enabled:
@@ -187,6 +184,10 @@ async def scanner_loop():
                         for user_wallet in trading_users:
                             uid = user_wallet["user_id"]
                             try:
+                                if await db.is_blacklisted(contract, CHAIN.upper(), user_id=uid, admin_ids=ADMIN_TELEGRAM_IDS):
+                                    logger.debug("Skipping blacklisted token %s for user %d", token.get("symbol"), uid)
+                                    continue
+
                                 already = await db.is_token_already_bought(
                                     token["contract_address"], CHAIN.upper(), uid
                                 )

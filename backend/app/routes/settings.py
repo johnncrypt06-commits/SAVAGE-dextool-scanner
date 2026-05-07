@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
@@ -22,8 +22,12 @@ def validate(data: dict):
 async def get_settings(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     settings = await get_effective_settings(db, user['user_id'])
     wallet = await db.get(UserWallet, user['user_id'])
-    blacklist = (await db.execute(select(TokenBlacklist).order_by(TokenBlacklist.added_at.desc()))).scalars().all()
-    return UserSettingsResponse(**settings, auto_trade=bool(wallet.auto_trade) if wallet else False, blacklist=[{'token_address': b.token_address, 'chain': b.chain, 'reason': b.reason, 'added_at': b.added_at} for b in blacklist])
+    if user['is_admin']:
+        bl_stmt = select(TokenBlacklist).order_by(TokenBlacklist.added_at.desc())
+    else:
+        bl_stmt = select(TokenBlacklist).where(TokenBlacklist.added_by == user['user_id']).order_by(TokenBlacklist.added_at.desc())
+    blacklist = (await db.execute(bl_stmt)).scalars().all()
+    return UserSettingsResponse(**settings, auto_trade=bool(wallet.auto_trade) if wallet else False, blacklist=[{'token_address': b.token_address, 'chain': b.chain, 'reason': b.reason, 'added_by': b.added_by, 'added_at': b.added_at} for b in blacklist])
 
 
 @router.put('', response_model=UserSettingsResponse)
@@ -51,11 +55,19 @@ async def add_blacklist(payload: BlacklistAddRequest, user: dict = Depends(get_c
 
 
 @router.delete('/blacklist/{token_address}')
-async def remove_blacklist(token_address: str, chain: str = 'SOL', user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    item = (await db.execute(select(TokenBlacklist).where(TokenBlacklist.token_address == token_address, TokenBlacklist.chain == chain))).scalar_one_or_none()
-    if not item:
+async def remove_blacklist(token_address: str, chain: str = 'SOL', added_by: int | None = Query(default=None), user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if user['is_admin']:
+        if added_by is not None:
+            stmt = select(TokenBlacklist).where(TokenBlacklist.token_address == token_address, TokenBlacklist.chain == chain, TokenBlacklist.added_by == added_by)
+        else:
+            stmt = select(TokenBlacklist).where(TokenBlacklist.token_address == token_address, TokenBlacklist.chain == chain)
+    else:
+        stmt = select(TokenBlacklist).where(TokenBlacklist.token_address == token_address, TokenBlacklist.chain == chain, TokenBlacklist.added_by == user['user_id'])
+    items = (await db.execute(stmt)).scalars().all()
+    if not items:
         raise HTTPException(status_code=404, detail='Not found')
-    await db.delete(item)
+    for item in items:
+        await db.delete(item)
     await db.commit()
     return {'success': True}
 

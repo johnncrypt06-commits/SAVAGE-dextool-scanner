@@ -79,7 +79,7 @@ export interface UserSettingsResponse {
   auto_trade: boolean;
   stop_loss: number | null;
   slippage: number | null;
-  blacklist: Array<{ token_address: string; chain: string; reason: string; added_at: string }>;
+  blacklist: Array<{ token_address: string; chain: string; reason: string; added_by: number; added_at: string }>;
 }
 
 export interface UpdateSettingsRequest {
