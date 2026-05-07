@@ -1002,7 +1002,7 @@ async def cmd_config(update, context):
     msg = (
         "⚙️ <b>Configuration</b>\n\n"
         f"Chain: {CHAIN}\n"
-        f"Scanner Mode: {'DexTools + DexScreener' if DEXTOOLS_API_KEY else 'DexScreener only'}\n"
+        f"Scanner Mode: Dextool\n"
         f"Buy Percent: {BUY_PERCENT}%\n"
         f"Take Profit: {TAKE_PROFIT}%\n"
         f"Stop Loss: {STOP_LOSS}%\n"
@@ -1442,7 +1442,7 @@ async def cmd_info(update, context):
         f"\U0001f4b8 <b>Tax:</b> Buy {data['buy_tax']:.1f}% / Sell {data['sell_tax']:.1f}%\n"
         f"\u2b50 <b>Score:</b> {data['score_bar']}\n"
         f"\n\U0001f517 {social_str}\n"
-        f'\n<a href="{dextools_url}">\U0001f4ca DexTools</a> | <a href="{ds_url}">\U0001f4ca DexScreener</a>\n'
+        f'\n<a href="{dextools_url}">\U0001f4ca Dextool</a> | <a href="{ds_url}">\U0001f4ca Dextool</a>\n'
         "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
     )
 
@@ -2047,13 +2047,13 @@ async def post_init(application):
     api_runner = await start_api_server()
 
     logger.info("Bot initialised – chain=%s, balance=%.6f %s, traders=%d", CHAIN, balance, native, len(trading_users))
-    scanner_mode = "DexTools + DexScreener" if DEXTOOLS_API_KEY else "DexScreener only (free)"
     await notifier.send_message(
-        f"🤖 <b>DexTool Scanner Online</b>\n"
-        f"Chain: {CHAIN} | Balance: {balance:.4f} {native}\n"
-        f"Active traders: {len(trading_users)}\n"
-        f"Scanner: {scanner_mode}\n"
-        f"Send /start to begin scanning."
+        f"🔥 <b>Älpha Scanner Awakened</b>\n\n"
+        f"Chain: {CHAIN}\n\n"
+        f"Wallet: {balance:.4f} {native}\n\n"
+        f"Active Traders: {len(trading_users)}\n\n"
+        f"Signal Source: Dextool\n\n"
+        f"The market is being watched. Send /start to begin the hunt."
     )
 
 
@@ -2803,7 +2803,7 @@ async def handle_callback(update, context):
                 f"\U0001f4b8 <b>Tax:</b> Buy {info_data['buy_tax']:.1f}% / Sell {info_data['sell_tax']:.1f}%\n"
                 f"\u2b50 <b>Score:</b> {info_data['score_bar']}\n"
                 f"\n\U0001f517 {social_str}\n"
-                f'\n<a href="{dextools_url}">\U0001f4ca DexTools</a> | <a href="{ds_url}">\U0001f4ca DexScreener</a>\n'
+                f'\n<a href="{dextools_url}">\U0001f4ca Dextool</a> | <a href="{ds_url}">\U0001f4ca Dextool</a>\n'
                 "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"
             )
             tp = token_address[:16]
@@ -2886,7 +2886,7 @@ async def handle_callback(update, context):
             msg = (
                 "⚙️ <b>Configuration</b>\n\n"
                 f"Chain: {CHAIN}\n"
-                f"Scanner Mode: {'DexTools + DexScreener' if DEXTOOLS_API_KEY else 'DexScreener only'}\n"
+                f"Scanner Mode: Dextool\n"
                 f"Buy Percent: {BUY_PERCENT}%\n"
                 f"Take Profit: {TAKE_PROFIT}%\n"
                 f"Stop Loss: {STOP_LOSS}%\n"
