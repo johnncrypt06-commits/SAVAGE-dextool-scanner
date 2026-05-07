@@ -2,8 +2,10 @@
 builder = "DOCKERFILE"
 dockerfilePath = "./backend/Dockerfile"
 
+# Run migrations separately (e.g. railway run alembic upgrade head) so the
+# web process is never blocked waiting on the database at deploy time.
 [deploy]
-startCommand = "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
