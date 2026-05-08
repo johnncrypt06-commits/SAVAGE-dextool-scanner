@@ -9,7 +9,18 @@ const HOP_BY_HOP = new Set([
   'proxy-authorization',
   'proxy-connection',
   'content-length',
+  'x-savage-frontend-origin',
 ]);
+
+function frontendOrigin(req) {
+  var proto = req.headers['x-forwarded-proto'] || 'https';
+  var host = req.headers.host;
+  if (Array.isArray(proto)) proto = proto[0];
+  if (Array.isArray(host)) host = host[0];
+  proto = String(proto).split(',')[0].trim();
+  host = String(host || '').split(',')[0].trim();
+  return host ? proto + '://' + host : '';
+}
 
 module.exports = async function handler(req, res) {
   var backendUrl =
@@ -32,6 +43,11 @@ module.exports = async function handler(req, res) {
     if (!HOP_BY_HOP.has(key.toLowerCase())) {
       headers[key] = req.headers[key];
     }
+  }
+
+  var origin = frontendOrigin(req);
+  if (origin) {
+    headers['x-savage-frontend-origin'] = origin;
   }
 
   var body;
