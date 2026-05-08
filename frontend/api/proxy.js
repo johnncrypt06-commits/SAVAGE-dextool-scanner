@@ -22,6 +22,28 @@ function frontendOrigin(req) {
   return host ? proto + '://' + host : '';
 }
 
+function resolveIncomingPath(req) {
+  var candidates = [
+    req.url,
+    req.headers['x-vercel-original-url'],
+    req.headers['x-forwarded-uri'],
+    req.headers['x-original-url'],
+  ];
+  for (var i = 0; i < candidates.length; i++) {
+    var raw = candidates[i];
+    if (!raw) continue;
+    if (Array.isArray(raw)) raw = raw[0];
+    raw = String(raw);
+    if (raw.indexOf('/api/') === 0) return raw;
+  }
+  // Defensive fallback: strip leading '/api/proxy' that Vercel may surface on rewrite
+  var fallback = String(req.url || '');
+  if (fallback.indexOf('/api/proxy') === 0) {
+    return '/api' + fallback.slice('/api/proxy'.length);
+  }
+  return fallback;
+}
+
 module.exports = async function handler(req, res) {
   var backendUrl =
     process.env.BACKEND_URL ||
@@ -31,12 +53,13 @@ module.exports = async function handler(req, res) {
   if (!backendUrl) {
     return res.status(500).json({
       error:
-        'No backend URL configured. Set the BACKEND_URL environment variable in Vercel project settings.',
+        'No backend URL configured. Set BACKEND_URL in Vercel project settings to your Railway backend URL (e.g. https://savage-backend.up.railway.app).',
     });
   }
 
   var base = backendUrl.replace(/\/+$/, '');
-  var target = base + req.url;
+  var incomingPath = resolveIncomingPath(req);
+  var target = base + incomingPath;
 
   var headers = {};
   for (var key in req.headers) {
@@ -92,7 +115,8 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     return res.status(502).json({
       error: 'Bad Gateway',
-      message: err.message,
+      message: err && err.message ? String(err.message) : String(err),
+      target: target.replace(/(api[-_]?key=)[^&]+/gi, '$1***'),
     });
   }
 };
