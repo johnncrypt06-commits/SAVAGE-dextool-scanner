@@ -87,7 +87,8 @@ limit_order_task: asyncio.Task | None = None
 
 
 def _is_admin(update) -> bool:
-    return update.effective_user.id == TELEGRAM_CHAT_ID
+    uid = update.effective_user.id
+    return uid == TELEGRAM_CHAT_ID or uid in ADMIN_TELEGRAM_IDS
 
 
 async def _is_authorized(update) -> bool:
@@ -400,6 +401,7 @@ async def cmd_help(update, context):
             lines.append("/fees — Fee revenue stats")
             lines.append("/stats all — All users' combined stats")
             lines.append("/alerts on|off — Toggle lowcap alert broadcasting")
+            lines.append("/scan — Force an immediate scan and report qualified lowcaps")
             lines.append("/backtest [days] — Replay scoring strategy against history")
             lines.append("/blacklist — Manage token blacklist")
             lines.append("/whitelist — Manage token whitelist")
@@ -914,7 +916,22 @@ async def cmd_status(update, context):
         positions = await monitor.get_positions_with_roi(user_id=user_id)
 
     if not positions:
-        await update.message.reply_text("No open positions.")
+        scanner_state = "running" if is_running else "stopped"
+        alerts_state = "on" if alerts_enabled else "off"
+        status_lines = [
+            "📊 <b>No open positions.</b>\n",
+            f"Scanner: <b>{scanner_state}</b>",
+            f"Alerts: <b>{alerts_state}</b>",
+            f"Scan interval: {SCAN_INTERVAL}s",
+        ]
+        try:
+            recent_tokens = await db.get_recent_detected_tokens(limit=1)
+            lowcap_count = len(await db.get_recent_detected_tokens(limit=100)) if recent_tokens else 0
+            status_lines.append(f"Recent lowcaps detected: <b>{lowcap_count}</b>")
+        except Exception:
+            pass
+        status_lines.append("\nUse /lowcaps to view detected tokens.")
+        await update.message.reply_html("\n".join(status_lines))
         return
 
     native = NATIVE_SYMBOL.get(CHAIN.upper(), "SOL")
@@ -3102,6 +3119,64 @@ async def cmd_lowcaps(update, context):
     )
 
 
+async def cmd_scan(update, context):
+    """Admin-only: force an immediate scan and report qualified lowcaps."""
+    await _register_chat(update)
+    if not _is_admin(update):
+        await update.message.reply_text("Admin only.")
+        return
+
+    await update.message.reply_text("🔍 Running scan…")
+    try:
+        async with aiohttp.ClientSession() as session:
+            tokens = await scan_all_sources(session, CHAIN)
+
+        for token in tokens:
+            try:
+                await db.save_detected_token(token)
+            except Exception as exc:
+                logger.warning("cmd_scan: failed to save token %s: %s", token.get("symbol"), exc)
+
+        if not tokens:
+            await update.message.reply_html(
+                "✅ <b>Scan complete — 0 tokens qualified</b>\n\n"
+                f"Chain: <b>{CHAIN}</b>\n"
+                f"MIN_SCORE: {MIN_SCORE}\n"
+                f"Liquidity: ≥ ${MIN_LIQUIDITY:,}\n"
+                f"MCap: ${MIN_MCAP:,} – ${MAX_MCAP:,}\n\n"
+                "No tokens passed the current filters. "
+                "Try lowering MIN_SCORE or adjusting liquidity/mcap thresholds."
+            )
+            return
+
+        top = sorted(tokens, key=lambda t: t.get("score", 0) or 0, reverse=True)[:10]
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━━━━",
+            f"🔍 <b>SCAN RESULTS</b> — {CHAIN}",
+            "━━━━━━━━━━━━━━━━━━━━━━",
+            f"Qualified: <b>{len(tokens)}</b> | MIN_SCORE: {MIN_SCORE}",
+            f"Liq ≥ ${MIN_LIQUIDITY:,} | MCap ${MIN_MCAP:,}–${MAX_MCAP:,}",
+            "",
+        ]
+        for i, t in enumerate(top, 1):
+            score = t.get("score")
+            score_str = f"Score: {score}" if score is not None else ""
+            lines.append(
+                f"{i}. <b>{t.get('symbol', '?')}</b> ({t.get('name', '?')})\n"
+                f"   💰 MCap: ${t.get('market_cap', 0):,.0f} | 💧 Liq: ${t.get('liquidity', 0):,.0f}"
+                + (f" | {score_str}" if score_str else "") +
+                f"\n   📄 <code>{t.get('contract_address', '')}</code>"
+            )
+
+        if len(tokens) > 10:
+            lines.append(f"\n… and {len(tokens) - 10} more")
+
+        await update.message.reply_html("\n".join(lines))
+    except Exception as exc:
+        logger.error("cmd_scan error: %s", exc, exc_info=True)
+        await update.message.reply_html(f"❌ <b>Scan failed</b>\n<code>{exc}</code>")
+
+
 async def cmd_backtest(update, context):
     """Replay scoring strategy against historical scan data."""
     await _register_chat(update)
@@ -3890,6 +3965,7 @@ def main():
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("login", cmd_login))
     app.add_handler(CommandHandler("lowcaps", cmd_lowcaps))
+    app.add_handler(CommandHandler("scan", cmd_scan))
     app.add_handler(CommandHandler("backtest", cmd_backtest))
     app.add_handler(CommandHandler("blacklist", cmd_blacklist))
     app.add_handler(CommandHandler("whitelist", cmd_whitelist))

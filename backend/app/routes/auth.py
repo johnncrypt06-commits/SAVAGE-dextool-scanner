@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 LOCAL_FRONTEND = FRONTEND_URL.startswith(('http://localhost', 'http://127.0.0.1'))
 COOKIE_SECURE = not LOCAL_FRONTEND
 COOKIE_SAMESITE = 'lax' if LOCAL_FRONTEND else 'none'
+
+
+def _frontend_origin(request: Request) -> str:
+    proxied_origin = request.headers.get('x-savage-frontend-origin')
+    if proxied_origin:
+        return proxied_origin.rstrip('/')
+    return FRONTEND_URL
 
 
 async def _send_login_confirmation(user_id: int) -> None:
@@ -42,10 +49,10 @@ async def telegram_login(payload: TelegramLoginData, response: Response, db: Asy
     if not verify_telegram_login(data):
         raise HTTPException(status_code=401, detail='Invalid Telegram login signature')
     allowed = await db.get(AllowedUser, payload.id)
-    if not allowed:
-        raise HTTPException(status_code=403, detail='User is not allowed. Contact admin.')
-    username = payload.username or allowed.username or ''
     admin = is_admin(payload.id)
+    if not allowed and not admin:
+        raise HTTPException(status_code=403, detail='User is not allowed. Contact admin.')
+    username = payload.username or (allowed.username if allowed else '') or ''
     token = create_jwt(payload.id, username, admin)
     response.set_cookie(
         'auth_token',
@@ -61,6 +68,7 @@ async def telegram_login(payload: TelegramLoginData, response: Response, db: Asy
 
 @router.get('/telegram/callback')
 async def telegram_login_redirect(
+    request: Request,
     id: int = Query(...),
     first_name: str = Query(...),
     auth_date: int = Query(...),
@@ -78,20 +86,22 @@ async def telegram_login_redirect(
     if photo_url is not None:
         data['photo_url'] = photo_url
 
+    fe = _frontend_origin(request)
+
     if not verify_telegram_login(data):
         logger.warning('Telegram redirect callback: invalid signature for id=%s', id)
-        return RedirectResponse(url=f'{FRONTEND_URL}/login?error=invalid', status_code=302)
+        return RedirectResponse(url=f'{fe}/login?error=invalid', status_code=302)
 
     allowed = await db.get(AllowedUser, id)
-    if not allowed:
-        logger.info('Telegram redirect callback: user %s not in allow-list', id)
-        return RedirectResponse(url=f'{FRONTEND_URL}/login?error=access_denied', status_code=302)
-
-    username_value = username or allowed.username or ''
     admin = is_admin(id)
+    if not allowed and not admin:
+        logger.info('Telegram redirect callback: user %s not in allow-list', id)
+        return RedirectResponse(url=f'{fe}/login?error=access_denied', status_code=302)
+
+    username_value = username or (allowed.username if allowed else '') or first_name or ''
     token = create_jwt(id, username_value, admin)
 
-    redirect = RedirectResponse(url=f'{FRONTEND_URL}/overview', status_code=303)
+    redirect = RedirectResponse(url=f'{fe}/overview', status_code=303)
     redirect.set_cookie(
         'auth_token',
         token,

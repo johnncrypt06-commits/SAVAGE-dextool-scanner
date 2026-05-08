@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WsEvent } from '../api/types';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+function getWsBase(): string {
+  const env = import.meta.env.VITE_WS_URL;
+  if (env) return env;
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}`;
+}
+
+const WS_URL = getWsBase();
 const MAX_BACKOFF = 30_000;
 const HEARTBEAT_INTERVAL = 30_000;
 
