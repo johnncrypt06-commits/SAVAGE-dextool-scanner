@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 const BOT_NAME = import.meta.env.VITE_TELEGRAM_BOT_NAME || 'your_bot_name';
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 export default function TelegramLogin() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -12,7 +12,8 @@ export default function TelegramLogin() {
     script.setAttribute('data-telegram-login', BOT_NAME);
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-radius', '8');
-    script.setAttribute('data-auth-url', `${API_URL}/api/auth/telegram/callback`);
+    const callbackBase = API_URL || window.location.origin;
+    script.setAttribute('data-auth-url', `${callbackBase}/api/auth/telegram/callback`);
     script.setAttribute('data-request-access', 'write');
     script.async = true;
 
