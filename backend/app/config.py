@@ -12,6 +12,7 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 ADMIN_TELEGRAM_IDS = [int(x.strip()) for x in os.getenv('ADMIN_TELEGRAM_IDS', os.getenv('TELEGRAM_CHAT_ID', '0')).split(',') if x.strip()]
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 RPC_URL_SOL = os.getenv('RPC_URL_SOL', 'https://api.mainnet-beta.solana.com')
+RPC_URLS_SOL = [u.strip() for u in RPC_URL_SOL.split(',') if u.strip()]
 ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', '')
 BIRDEYE_API_KEY = os.getenv('BIRDEYE_API_KEY', '')
 BACKEND_PORT = int(os.getenv('BACKEND_PORT', '8000'))

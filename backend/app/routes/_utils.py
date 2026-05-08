@@ -1,20 +1,33 @@
+import logging
+
 import httpx
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..config import RPC_URL_SOL
+from ..config import RPC_URLS_SOL
 from ..models import UserSettings
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_sol_balance(address: str) -> float:
     if not address:
         return 0.0
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(RPC_URL_SOL, json={'jsonrpc': '2.0', 'id': 1, 'method': 'getBalance', 'params': [address]})
-            resp.raise_for_status()
-            return float(resp.json().get('result', {}).get('value', 0)) / 1_000_000_000
-    except Exception:
-        return 0.0
+    payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'getBalance', 'params': [address]}
+    last_error = None
+    async with httpx.AsyncClient(timeout=10) as client:
+        for rpc_url in RPC_URLS_SOL:
+            try:
+                resp = await client.post(rpc_url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                if 'error' in data:
+                    raise RuntimeError(data['error'])
+                return float(data.get('result', {}).get('value', 0)) / 1_000_000_000
+            except Exception as exc:
+                last_error = exc
+                logger.warning('SOL balance RPC failed for %s via %s: %s', address, rpc_url, exc)
+    logger.error('SOL balance fetch failed for %s after %d RPC endpoint(s): %s', address, len(RPC_URLS_SOL), last_error)
+    return 0.0
 
 
 async def fetch_sol_usd() -> float:
