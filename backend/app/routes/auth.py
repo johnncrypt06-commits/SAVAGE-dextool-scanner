@@ -168,7 +168,7 @@ async def bot_login_status(
         exp = row.expires_at.replace(tzinfo=timezone.utc)
     else:
         exp = row.expires_at
-    if now > exp and row.claimed_at is None:
+    if now > exp:
         return {'status': 'expired'}
     if row.claimed_at is None:
         return {'status': 'pending'}

@@ -607,8 +607,8 @@ async def claim_login_code(code: str, user_id: int, username: str) -> str:
         return 'already_claimed'
     if now > exp:
         return 'expired'
-    await _execute(
+    status = await _execute(
         'UPDATE dashboard_login_codes SET user_id = ?, username = ?, claimed_at = NOW() WHERE code = ? AND claimed_at IS NULL',
         user_id, username, code,
     )
-    return 'ok'
+    return 'ok' if _affected(status) > 0 else 'already_claimed'
