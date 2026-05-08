@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramLogin from '../components/TelegramLogin';
+import BotLogin from '../components/BotLogin';
 import { useAuthStore } from '../store/authStore';
 import { APP_NAME, APP_TAGLINE } from '../utils/constants';
 
@@ -44,6 +45,14 @@ export default function Login() {
             {displayError}
           </p>
         )}
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-text-muted text-xs uppercase tracking-wider">or</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        <BotLogin />
       </div>
 
       <p className="mt-8 text-text-muted text-xs">Secure login via Telegram</p>

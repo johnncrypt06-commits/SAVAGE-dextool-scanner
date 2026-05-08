@@ -8,6 +8,8 @@ import type {
   UserSettingsResponse,
   UpdateSettingsRequest,
   WalletResponse,
+  BotLoginStartResponse,
+  BotLoginStatusResponse,
 } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -60,4 +62,9 @@ export const api = {
     apiFetch<void>('/api/settings/auto-trade', { method: 'PUT', body: JSON.stringify({ enabled }) }),
 
   getWallet: () => apiFetch<WalletResponse>('/api/wallet'),
+
+  botLoginStart: () =>
+    apiFetch<BotLoginStartResponse>('/api/auth/bot-login/start', { method: 'POST' }),
+  botLoginStatus: (code: string) =>
+    apiFetch<BotLoginStatusResponse>(`/api/auth/bot-login/status?code=${encodeURIComponent(code)}`),
 };
