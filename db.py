@@ -572,3 +572,43 @@ async def activate_kill_switch(user_id: int):
 
 async def deactivate_kill_switch(user_id: int):
     await _execute('INSERT INTO daily_loss_records (user_id, date, total_loss, kill_switch_active) VALUES (?, ?, 0, FALSE) ON CONFLICT (user_id, date) DO UPDATE SET kill_switch_active = FALSE', user_id, date.today().isoformat())
+
+
+_LOGIN_CODE_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS dashboard_login_codes (
+    code VARCHAR(10) PRIMARY KEY,
+    user_id BIGINT,
+    username VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    claimed_at TIMESTAMPTZ,
+    consumed_at TIMESTAMPTZ
+)
+"""
+
+
+async def ensure_login_code_table():
+    pool = await _ensure_pool()
+    await pool.execute(_LOGIN_CODE_TABLE_DDL)
+
+
+async def claim_login_code(code: str, user_id: int, username: str) -> str:
+    """Attempt to claim a dashboard login code. Returns 'ok', 'invalid', 'expired', or 'already_claimed'."""
+    await ensure_login_code_table()
+    row = await _fetchrow('SELECT * FROM dashboard_login_codes WHERE code = ?', code)
+    if not row:
+        return 'invalid'
+    from datetime import datetime, timezone as tz
+    now = datetime.now(tz.utc)
+    exp = row['expires_at']
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=tz.utc)
+    if row.get('claimed_at') is not None:
+        return 'already_claimed'
+    if now > exp:
+        return 'expired'
+    status = await _execute(
+        'UPDATE dashboard_login_codes SET user_id = ?, username = ?, claimed_at = NOW() WHERE code = ? AND claimed_at IS NULL',
+        user_id, username, code,
+    )
+    return 'ok' if _affected(status) > 0 else 'already_claimed'

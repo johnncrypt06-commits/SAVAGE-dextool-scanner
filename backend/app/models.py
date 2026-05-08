@@ -82,6 +82,17 @@ class AllowedUser(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DashboardLoginCode(Base):
+    __tablename__ = 'dashboard_login_codes'
+    code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class UserWallet(Base):
     __tablename__ = 'user_wallets'
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
