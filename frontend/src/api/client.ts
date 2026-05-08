@@ -11,11 +11,10 @@ import type {
   BotLoginStartResponse,
   BotLoginStatusResponse,
 } from './types';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE } from './baseUrl';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
@@ -47,7 +46,7 @@ export const api = {
     apiFetch<{ items: TradeResponse[]; page: number; per_page: number; total: number }>(
       `/api/trades?page=${page}&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`,
     ),
-  exportTrades: () => `${API_URL}/api/trades/export`,
+  exportTrades: () => `${API_BASE}/api/trades/export`,
 
   getPerformance: () => apiFetch<PerformanceResponse>('/api/performance'),
 

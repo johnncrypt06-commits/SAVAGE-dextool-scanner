@@ -28,8 +28,12 @@ export default function BotLogin() {
       const res = await api.botLoginStart();
       setCode(res.code);
       setExpiresAt(res.expires_at);
-    } catch {
-      setError('Failed to generate code. Try again.');
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to generate code. Try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
