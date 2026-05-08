@@ -1,7 +1,7 @@
 {
   "framework": null,
-  "installCommand": "cd frontend && npx pnpm@9.15.4 install --frozen-lockfile",
-  "buildCommand": "cd frontend && npx pnpm@9.15.4 build",
+  "installCommand": "npm --prefix frontend install",
+  "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
